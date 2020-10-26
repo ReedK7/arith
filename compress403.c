@@ -112,109 +112,48 @@ extern void decompress40(FILE *input)
 
 extern void compress40 (FILE *input)
 {
-// (1) READ IN FILE
-    Pnm_ppm pic = Pnm_ppmread(input, uarray2_methods_blocked);
-
-// (2) TRIM FILE
+Pnm_ppm pic = Pnm_ppmread(input, uarray2_methods_blocked);
     pic = prep(pic);
-
-// (3) Array is array of rgb pixels
     UArray2b_T pixel_array = pic->pixels;
-    UArray2b_T after_array = pic->pixels;
 
-    /*
-    for(int i = 0; i < (int)pic->width; i++) {
-        for(int j = 0; j < (int) pic->height; j++){
-            printf("r g b = [%d %d %d]", ((struct Pnm_rgb *) UArray2b_at(array, i, j))->red,
-                ((struct Pnm_rgb *) UArray2b_at(array, i, j))->green,
-                ((struct Pnm_rgb *) UArray2b_at(array, i, j))->blue);
-            printf(" at col, row [%d %d]\n", i, j);
-        }
-    }
-    */
-
-    printf("pic trimmed dimensions: col, row [%d %d]\n", pic->width, pic->height);
-    /* Pic is trimmed and copied as a UArray2b */
-
-    unsigned den = pic->denominator;
-    (void) den;
-
-    fprintf(stdout, "Write after image\n");
-    FILE *writeToB = fopen("beforetrans.ppm", "w");
+    fprintf(stdout, "Write unaltered\n");
+    FILE *writeToB = fopen("unaltered.ppm", "w");
     Pnm_ppmwrite(writeToB, pic);
     fclose(writeToB);
 
-// (4) Transform from rgb to cvc
+    //unsigned den = pic->denominator;
+
     UArray2b_map(pixel_array, rgb_cvc_transform, &(pic->denominator));
-    
-//TEST transform & reverse transform
+
     UArray2b_map(pixel_array, cvc_rgb_transform, &(pic->denominator));
-    printf("\n");
-    printf("ppm diff after rgb_to_cvc and cvc_to_rgb\n");
-    ppmdiff(after_array, pixel_array);
-    printf("\n");
+
     pic->pixels = pixel_array;
-    fprintf(stdout, "Write after image\n");
-    FILE *writeToA = fopen("aftertrans.ppm", "w");
-    Pnm_ppmwrite(writeToA, pic);
-    fclose(writeToA);
+    fprintf(stdout, "Write rgv to cvc and back\n");
+    FILE *writeTorgb = fopen("pgbcvctest.ppm", "w");
+    Pnm_ppmwrite(writeTorgb, pic);
+    fclose(writeTorgb);
+
     UArray2b_map(pixel_array, rgb_cvc_transform, &(pic->denominator));
-    /*
-    printf("pixel data:\n");
-    for(int i = 0; i < (int)pic->width; i++) {
-        for(int j = 0; j < (int) pic->height; j++){
-            printf("y pb pr = [%f %f %f]", ((struct Pnm_cvc *) UArray2b_at(array, i, j))->y,
-                ((struct Pnm_cvc *) UArray2b_at(array, i, j))->pb,
-                ((struct Pnm_cvc *) UArray2b_at(array, i, j))->pr);
-            printf(" at col, row [%d %d]\n", i, j);
-        }
-    }
-    */
 
-    struct lifesaver closure;
     UArray2_T output = UArray2_new(UArray2b_width(pixel_array) / 2, UArray2b_height(pixel_array) / 2, 80);
-
+    
+    struct lifesaver closure;
     closure.cv_image = pixel_array;
     closure.den = pic->denominator;
 
-// (5) quantize & pitpack all pixel groups, save codes into output
     UArray2_map_row_major(output, quantize_and_pack, &closure);
-// (5.b) dequantize and unpack
+
     UArray2b_T output_cv = UArray2b_new(UArray2_width(output) * 2, UArray2_height(output) * 2, 80, 2);
+
     UArray2_map_col_major(output, dequantize_and_unpack, &output_cv);
 
+    UArray2b_map(output_cv, cvc_rgb_transform, &(pic->denominator));
 
-    printf("POST DEQUANTIZE PIC:\n");
-    for(int i = 0; i < UArray2b_width(output_cv); i++) {
-        for(int j = 0; j < UArray2b_height(output_cv); j++){
-                printf("Word at [%d    %d] === %f\n", i, j, ((struct Pnm_cvc*) UArray2b_at(output_cv, i, j))->y);
-                printf("Word at [%d    %d] === %f\n", i, j, ((struct Pnm_cvc*) UArray2b_at(output_cv, i, j))->pr);
-                printf("Word at [%d    %d] === %f\n", i, j, ((struct Pnm_cvc*) UArray2b_at(output_cv, i, j))->pb);
-        }
-        printf("\n");
-    }
-
-    UArray2b_map(output_cv, cvc_rgb_transform, &den);
-
-    for(int i = 0; i < UArray2b_width(output_cv); i++) {
-        for(int j = 0; j < UArray2b_height(output_cv); j++){
-                printf("Word at [%d    %d] === %d\n", i, j, ((struct Pnm_rgb*) UArray2b_at(output_cv, i, j))->red);
-                printf("Word at [%d    %d] === %d\n", i, j, ((struct Pnm_rgb*) UArray2b_at(output_cv, i, j))->green);
-                printf("Word at [%d    %d] === %d\n", i, j, ((struct Pnm_rgb*) UArray2b_at(output_cv, i, j))->blue);
-        }
-        printf("\n");
-    }
-    //printf("printing all words:\n");
-
-// (6) Print out Compressed file to stdout
-    /*
-    fprintf(stdout, "COMP40 Compressed image format 2\n%u %u\n",
-        pic->width, pic->height);
-    UArray2_map_row_major(output, print_comp, NULL);
-    */
-    //UArray2_map_row_major(words, make_word, output);
-    //output is an array of codewords for compressed info
-    //bitpack this bih
+    pic->pixels = output_cv;
+    fprintf(stdout, "Compress and Decompress file\n");
+    FILE *writeTocomp = fopen("decompress.ppm", "w");
+    Pnm_ppmwrite(writeTocomp, pic);
+    fclose(writeTocomp);
 
     UArray2_free(&output);
     FILE *writeTo2 = fopen("afterCVC.ppm", "w");
