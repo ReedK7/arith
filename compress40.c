@@ -584,7 +584,7 @@ void cvc_rgb_transform(int col, int row, UArray2b_T array2b, void *elem,
     void *cl)
 {
 
-    struct Pnm_cvc cvc = *((struct Pnm_cvc*) elem);
+    struct Pnm_cvc cvc = (*(struct Pnm_cvc*) elem);
     unsigned den = *((unsigned*) cl);
     printf("Den == %u\n", den);
     float y, pr, pb;
@@ -592,7 +592,7 @@ void cvc_rgb_transform(int col, int row, UArray2b_T array2b, void *elem,
     y = cvc.y;
     pr = cvc.pr;
     pb = cvc.pb;
-    printf("Floats: %f  %f  %f\n", y, pb, pr);
+    //printf("Floats: %f  %f  %f\n", cvc->y, cvc->pb, cvc->pr);
     r = (int) (den * (1.0 * y + 1.204 * pr));
     g = (int) (den * (1.0 * y - .0344136 * pb - .714136 * pr));
     b = (int) (den * (1.0 * y + 1.772 * pb));
@@ -662,7 +662,7 @@ else {
 
 }
 
-}
+}a
 
 
 void shave_row(int col, int row, UArray2b_T array2b, void *elem,
