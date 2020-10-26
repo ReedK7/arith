@@ -118,6 +118,7 @@ extern void compress40 (FILE *input)
 
 // (3) Array is array of rgb pixels
     UArray2b_T pixel_array = pic->pixels;
+    UArray2b_T after_array = pic->pixels;
 
     /*
     for(int i = 0; i < (int)pic->width; i++) {
@@ -130,7 +131,7 @@ extern void compress40 (FILE *input)
     }
     */
 
-    //printf("pic dimensions: col, row [%d %d]\n", pic->width, pic->height);
+    printf("pic trimmed dimensions: col, row [%d %d]\n", pic->width, pic->height);
     /* Pic is trimmed and copied as a UArray2b */
 
     unsigned den = pic->denominator;
@@ -143,14 +144,19 @@ extern void compress40 (FILE *input)
 
 // (4) Transform from rgb to cvc
     UArray2b_map(pixel_array, rgb_cvc_transform, &(pic->denominator));
-
+    
 //TEST transform & reverse transform
     UArray2b_map(pixel_array, cvc_rgb_transform, &(pic->denominator));
+    printf("\n");
+    printf("ppm diff after rgb_to_cvc and cvc_to_rgb\n");
+    ppmdiff(after_array, pixel_array);
+    printf("\n");
     pic->pixels = pixel_array;
     fprintf(stdout, "Write after image\n");
     FILE *writeToA = fopen("aftertrans.ppm", "w");
     Pnm_ppmwrite(writeToA, pic);
     fclose(writeToA);
+    UArray2b_map(pixel_array, rgb_cvc_transform, &(pic->denominator));
     /*
     printf("pixel data:\n");
     for(int i = 0; i < (int)pic->width; i++) {
@@ -171,14 +177,24 @@ extern void compress40 (FILE *input)
 
 // (5) quantize & pitpack all pixel groups, save codes into output
     UArray2_map_row_major(output, quantize_and_pack, &closure);
-
-    //UArray2_T words = UArray2_new(UArray2_width(output), UArray2_height(output), 64);
+// (5.b) dequantize and unpack
+    UArray2_T words = UArray2_new(UArray2_width(output), UArray2_height(output), 64);
+    UArray2_map_row_major(output, dequantize_and_unpack, &words);
+    printf("POST DEQUANTIZE PIC:\n");
+    for(int i = 0; i < UArray2_width(words); i++) {
+        for(int j = 0; j < UArray2_height(words); j++){
+        printf("Word at [%d    %d] === %d\n", i, j, *(int*) UArray2_at(words, i, j));
+        }
+        printf("\n");
+    }
     //printf("printing all words:\n");
 
 // (6) Print out Compressed file to stdout
+    /*
     fprintf(stdout, "COMP40 Compressed image format 2\n%u %u\n",
         pic->width, pic->height);
     UArray2_map_row_major(output, print_comp, NULL);
+    */
     //UArray2_map_row_major(words, make_word, output);
     //output is an array of codewords for compressed info
     //bitpack this bih
@@ -223,7 +239,7 @@ void quantize_and_pack(int col, int row, UArray2_T array2, void *elem,
         void *cl)
 {
 
-    struct pixdata *to_quantize;
+    struct pixdata *to_quantize = malloc(sizeof(*to_quantize));
     to_quantize->tl = *(struct Pnm_cvc*) UArray2b_at(((struct lifesaver*) cl)->cv_image, col * 2, row* 2);
     to_quantize->tr = *(struct Pnm_cvc*) UArray2b_at(((struct lifesaver*) cl)->cv_image, col * 2 + 1, row* 2);
     to_quantize->bl = *(struct Pnm_cvc*) UArray2b_at(((struct lifesaver*) cl)->cv_image, col * 2, row* 2 + 1);
@@ -232,19 +248,19 @@ void quantize_and_pack(int col, int row, UArray2_T array2, void *elem,
     struct pixdata *check = discrete_cosine_transform(quantize(to_quantize));
 
     *(struct pixdata*) UArray2_at(array2, row, col) = *check;
-    printf("lessgo\n");
+    //printf("lessgo\n");
     uint64_t word = 0;
-    printf("Passing in: [A B C D IPB IPR] == [%f %f %f %f %d %d]", check->a, check->b, check->c, check->d, check->ipb, check->ipr);
+    //printf("Passing in: [A B C D IPB IPR] == [%f %f %f %f %d %d]", check->a, check->b, check->c, check->d, check->ipb, check->ipr);
     word = Bitpack_newu(word, 9, 23, float29bit(check->a));
     word = Bitpack_news(word, 5, 18, float25bit(check->b));
     word = Bitpack_news(word, 5, 13, float25bit(check->c));
     word = Bitpack_news(word, 5, 8, float25bit(check->d));
     word = Bitpack_newu(word, 4, 4, check->ipb);
     word = Bitpack_newu(word, 4, 0, check->ipr);
-    printf("WRODRD at %d %d, %ld\n", col, row, word);
+    //printf("WRODRD at %d %d, %ld\n", col, row, word);
     *(uint64_t *) elem = word;
-    printf("WORD SHOULD BE 69 and IT IS :: %ld \n", *(uint64_t*)elem);
-    printf("test at: (%d, %d) %ld\n", col, row, *(uint64_t*)UArray2_at(array2, col, row)); 
+    //printf("WORD SHOULD BE 69 and IT IS :: %ld \n", *(uint64_t*)elem);
+    //printf("test at: (%d, %d) %ld\n", col, row, *(uint64_t*)UArray2_at(array2, col, row)); 
 }
 
 uint64_t Bitpack_getu(uint64_t word, unsigned width, unsigned lsb)
@@ -259,47 +275,61 @@ uint64_t Bitpack_getu(uint64_t word, unsigned width, unsigned lsb)
 void dequantize_and_unpack(int col, int row, UArray2_T array2, void *elem,
         void *cl)
 {
-     uint64_t word = *(uint64_t*)elem;
-     struct pixdata *dequantize;
-     pixdata->a = Bitpack_getu(word, 9, 23);
-     pixdata->b = Bitpack_getu(word, 5, 18);
-     pixdata->c = Bitpack_getu(word, 5, 13);
-     pixdata->d = Bitpack_getu(word, 5, 8);
-     pixdata->pb = Arith40_chroma_of_index(Bitpack_getu(word, 4, 4));
-     pixdata->pr = Arith40_chroma_of_index(Bitpack_getu(word, 4, 0));
-     //Data has been unpacked
-     //We must unquantize that bih
+    printf("\n");
+    printf("STARTING DEQUANTIZE AND UNPACK for: ");
+    (void) array2;
+    uint64_t word = *(uint64_t*)elem;
+    printf("%ld\n", word);
+    struct pixdata *dequantize = malloc(sizeof(*dequantize));
+    printf("Malloced dequantize\n");
+    dequantize->a = Bitpack_getu(word, 9, 23);
+    printf("Dequantized a == %u\n", (unsigned) dequantize->a);
+    dequantize->b = Bitpack_getu(word, 5, 18);
+    printf("Dequantized b == %u\n", (unsigned) dequantize->b);
+    dequantize->c = Bitpack_getu(word, 5, 13);
+    printf("Dequantized c == %u\n", (unsigned) dequantize->c);
+    dequantize->d = Bitpack_getu(word, 5, 8);
+    printf("Dequantized d == %u\n", (unsigned) dequantize->d);
+    dequantize->ipb = Arith40_chroma_of_index(Bitpack_getu(word, 4, 4));
+    printf("Dequantized pb == %f\n", (float) dequantize->ipb);
+    dequantize->ipr = Arith40_chroma_of_index(Bitpack_getu(word, 4, 0));
+    printf("Dequantized pr == %f\n", (float) dequantize->ipr);
+    printf("Data has been unpacked\n");
+    //Data has been unpacked
+    //We must unquantize that bih
 
     struct Pnm_cvc tl;
     struct Pnm_cvc tr;
     struct Pnm_cvc bl;
     struct Pnm_cvc br;
-    tl.y = pixdata->a − pixdata->b − pixdata->c + pixdata->d;
-    tr.y = pixdata->a − pixdata->b + pixdata->c − pixdata->d;
-    bl.y = pixdata->a + pixdata->b − pixdata->c − pixdata->d;
-    br.y = pixdata->a + pixdata->b + pixdata->c + pixdata->d;
+    tl.y = dequantize->a - dequantize->b - dequantize->c + dequantize->d;
+    tr.y = dequantize->a - dequantize->b + dequantize->c - dequantize->d;
+    bl.y = dequantize->a + dequantize->b - dequantize->c - dequantize->d;
+    br.y = dequantize->a + dequantize->b + dequantize->c + dequantize->d;
 
-    tl.pb = pixdata->pb;
-    tl.pb = pixdata->pr;
-    tr.pb = pixdata->pb;
-    tr.pb = pixdata->pr;
-    bl.pb = pixdata->pb;
-    bl.pb = pixdata->pr;
-    br.pb = pixdata->pb;
-    br.pb = pixdata->pr;
-
+    tl.pb = dequantize->ipb;
+    tl.pb = dequantize->ipr;
+    tr.pb = dequantize->ipb;
+    tr.pb = dequantize->ipr;
+    bl.pb = dequantize->ipb;
+    bl.pb = dequantize->ipr;
+    br.pb = dequantize->ipb;
+    br.pb = dequantize->ipr;
+    printf("Data has been quantized\n");
     //Places pixels in array accessed via the cl variable of the map
-    *(struct cvc*)UArray2_at((Uarray2_T) cl, col, row) = tl;
-    *(struct cvc*)UArray2_at((Uarray2_T) cl, col, row) = tr;
-    *(struct cvc*)UArray2_at((Uarray2_T) cl, col, row) = bl;
-    *(struct cvc*)UArray2_at((Uarray2_T) cl, col, row) = br;
+    // IS THE RIGHT SIDE CORRECT? DONT WE NEED TO ALTER COL AND ROW FOR EACH? 
+    *(struct Pnm_cvc*) UArray2_at(*(UArray2_T*) cl, col, row) = tl;
+    *(struct Pnm_cvc*) UArray2_at(*(UArray2_T*) cl, col, row) = tr;
+    *(struct Pnm_cvc*) UArray2_at(*(UArray2_T*) cl, col, row) = bl;
+    *(struct Pnm_cvc*) UArray2_at(*(UArray2_T*) cl, col, row) = br;
+    printf("data has been placed in UArray2\n");
 }
 
 
 int float29bit(float x) 
 {
-printf("\n");
-printf("FLOAT29BIT Turning %f into %u\n", x, (unsigned) (x * 511));
+//printf("\n");
+//printf("FLOAT29BIT Turning %f into %u\n", x, (unsigned) (x * 511));
 x = (unsigned) (x * 511);
 x = round(x /* * 63*/);
 return x;
@@ -413,7 +443,7 @@ struct pixdata *quantize(struct pixdata *pack)
         unsigned rep_pr = Arith40_index_of_chroma(avg_pr);
         pack->ipb = rep_pb;
         pack->ipr = rep_pr;
-        printf("[pb pr] == [%d %d]\n", rep_pb, rep_pr);
+       // printf("[pb pr] == [%d %d]\n", rep_pb, rep_pr);
         return pack;
 }
 
@@ -424,17 +454,17 @@ struct pixdata *discrete_cosine_transform(struct pixdata *pack)
     y2 = pack->tr.y;
     y3 = pack->bl.y;
     y4 = pack->br.y;
-    printf("[y1 y2 y3 y4] == [%f %f %f %f]\n", y1, y2, y3, y4);
+    //printf("[y1 y2 y3 y4] == [%f %f %f %f]\n", y1, y2, y3, y4);
     a = (y4 + y3 + y2 + y1) / 4;
     b = (y4 + y3 - y2 - y1) / 4;
     c = (y4 - y3 + y2 - y1) / 4;
     d = (y4 - y3 - y2 + y1) / 4;
-    printf("[A B C D] == [%f %f %f %f]\n", a, b, c, d);
+   // printf("[A B C D] == [%f %f %f %f]\n", a, b, c, d);
     pack->a = a;
     pack->b = b;
     pack->c = c;
     pack->d = d;
-    printf("[A B C D] == [%f %f %f %f]\n", pack->a, pack->b, pack->c, pack->d);
+ //   printf("[A B C D] == [%f %f %f %f]\n", pack->a, pack->b, pack->c, pack->d);
     return pack;
 }
 
@@ -444,10 +474,10 @@ Pnm_ppm prep(Pnm_ppm pic)
 {
         UArray2b_T og = pic->pixels;
         UArray2b_T array = pic->pixels;
-        int d = pic->denominator;
-        int h = pic->height;
-        int w = pic->width;
-        printf("[Denom, height, width] == [%d, %d, %d]\n", (int) d, (int) h, (int) w);
+        //int d = pic->denominator;
+        //int h = pic->height;
+        //int w = pic->width;
+   //     printf("[Denom, height, width] == [%d, %d, %d]\n", (int) d, (int) h, (int) w);
         //fprintf(stdout, "Write before image\n");
         FILE *writeTo = fopen("before.ppm", "w");
         Pnm_ppmwrite(writeTo, pic);
@@ -471,7 +501,7 @@ Pnm_ppm prep(Pnm_ppm pic)
         Pnm_ppmwrite(writeTo2, pic);
         fclose(writeTo2);
         double diff = ppmdiff(og,pic->pixels);
-        printf("PPMDiff returned: %f\n", diff);
+        printf("PPMDiff post prep returned: %f\n", diff);
         return pic;
 }
 
@@ -514,17 +544,17 @@ void cvc_rgb_transform(int col, int row, UArray2b_T array2b, void *elem,
     
     if (r < 0) {
         r = 0;
-    } else if (r > den) {
+    } else if ((unsigned) r > den) {
         r = den;
     }
     if (g < 0) {
         g = 0;
-    } else if (g > den) {
+    } else if ((unsigned) g > den) {
         g = den;
     }
     if (b < 0) {
         b = 0;
-    } else if (b > den) {
+    } else if ((unsigned) b > den) {
         b = den;
     }
     struct Pnm_rgb rgb;
