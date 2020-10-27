@@ -1,0 +1,10 @@
+Reed Kass-Mullet & 
+– Briefly explains your architecture (i.e. which files do what)
+1The linker translates the option -lfoo into a search for a file named libfoo.so or libfoo.a. It searches all directories named in a -L option
+as well as some built-in directories. You can see all the directories by running gcc with the -v option.
+3
+– Acknowledges help you may have received from or collaborative work you may have undertaken with
+others
+– Identifies what has been correctly implemented and what has not
+– Says approximately how many hours you have spent analyzing the problems posed in the assignment
+– Says approximately how many hours you have spent solving the problems after your analysis
