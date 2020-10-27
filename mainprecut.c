@@ -23,18 +23,14 @@
 #include "except.h"
 #include "assert.h"
 
-
 typedef struct Pnm_cvc {
     float y, pb, pr;
 } *Pnm_cvc;
-
 
 typedef struct lifesaver {
     unsigned den;
     UArray2b_T cv_image;
 } *lifesaver;
-
-
 
 typedef struct pixdata {
     struct Pnm_cvc tl;
@@ -48,7 +44,6 @@ typedef struct pixdata {
     unsigned ipb;
     unsigned ipr;
 } *pixdata;
-
 
 void shave_column(int col, int row, UArray2b_T array2b, void *elem,
                   void *cl);
@@ -154,6 +149,13 @@ extern void compress40 (FILE *input)
     Pnm_ppmfree(&pic);
 }
 
+/* printcomp
+ * Gets:  the parameters for a UArray2 map function,
+          uses the elem value to access code words
+ * Returns: Nothing
+ * Does: prints out the code word for a quantized pixel
+ *       set in big endian order.
+ */
 void print_comp(int col, int row, UArray2_T array2, void *elem,
                 void *cl)
 {
@@ -181,7 +183,16 @@ void print_comp(int col, int row, UArray2_T array2, void *elem,
     (void) ch4;
 }
 
-//Takes four pixels and converts to word
+/* quantize_and_pack
+ * Gets:  the map parameters for a UArray2_T. The elem
+ *        is a struct lifesaver when dereferenced. The array2
+ *        is an array where the bitpacked value will be stored
+ *        elem is used to save the bitpacked code word to the
+ *        array being mapped over
+ * Returns: Nothing
+ * Does: Quantizes the data from a four pixel area, then pitpacks
+ *       the information produced in the process.
+ */
 void quantize_and_pack(int col, int row, UArray2_T array2, void *elem,
         void *cl)
 {
@@ -208,7 +219,18 @@ void quantize_and_pack(int col, int row, UArray2_T array2, void *elem,
     //printf("test at: (%d, %d) %ld\n", col, row, *(uint64_t*)UArray2_at(array2, col, row)); 
 }
 
-//Takes word and converts to four pixels
+/* dequantize_and_unpack
+ * Gets:  the map parameters for a UArray2_T. The elem
+ *        is a uint64_t when dereferenced. The array2
+ *        is an array where the unbitpacked value and unquantized
+ *        pixel information will be stored.
+ *        cl is an auxillary array where the pixel data will be
+ *        stored.
+ * Returns: Nothing
+ * Does: Un-bitpack the codeword passed via elem, dequantize the data
+ *       from the codeword into cvc information for each of the four
+ *       pixels stored in the codeword.
+ */
 void dequantize_and_unpack(int col, int row, UArray2_T array2, void *elem,
         void *cl)
 {
@@ -260,7 +282,13 @@ void dequantize_and_unpack(int col, int row, UArray2_T array2, void *elem,
     //printf("data has been placed in UArray2\n");
 }
 
-
+/* quantize
+ * Gets:  a struct pixdata pack which contains cvc data for a set of pixels
+ *        to be quantized.
+ * Returns: a struct pixdata with ipb and ipr values filled out
+ * Does: performs the part of the quantizing process which averages
+ *       the pr and pb values of the pixels and indexes the chroma
+ */
 struct pixdata *quantize(struct pixdata *pack)
 {
         float avg_pb = (pack->tl).pb + pack->tr.pb + pack->br.pb + pack->bl.pb;
@@ -275,6 +303,14 @@ struct pixdata *quantize(struct pixdata *pack)
         return pack;
 }
 
+/* discrete_cosine_transform
+ * Gets:  a struct pixdata pack which contains cvc data for a set of pixels
+ *        to be quantized.
+ * Returns: a struct pixdata a, b, c, and d values computed from the
+ *          pixel data
+ * Does: performs the part of the quantizing process which calculates
+ *       a, b, c, and d values of the compression proccess.
+ */
 struct pixdata *discrete_cosine_transform(struct pixdata *pack)
 {
     float y1, y2, y3, y4, a, b, c, d;
@@ -296,7 +332,12 @@ struct pixdata *discrete_cosine_transform(struct pixdata *pack)
     return pack;
 }
 
-
+/* prep
+ * Gets:  a Pmn_ppm pic which contains the photo being compressed
+ * Returns: a Pnm_ppm containing the trimmed image
+ * Does: trims a column and/or a row if the dimensions of the image
+ *       are odd.
+ */
 Pnm_ppm prep(Pnm_ppm pic)
 
 {
@@ -329,6 +370,14 @@ Pnm_ppm prep(Pnm_ppm pic)
 
 //RGB TO CVC TRANSFORMS =====================================================
 
+/* rgb_cvc_transform
+ * Gets:  the map parameters for a UArray2b map.
+ *        elem provides a Pnm_rgb struct
+ *        cl is a pointer to an unsigned value representing the denominator
+ * Returns: nothing
+ * Does: updates each pixel to contain a Pnm_cvc struct containing the pixel
+ *       data in cvc format instead of rgb
+ */
 void rgb_cvc_transform(int col, int row, UArray2b_T array2b, void *elem,
     void *cl)
 {
@@ -348,6 +397,14 @@ void rgb_cvc_transform(int col, int row, UArray2b_T array2b, void *elem,
     *(struct Pnm_cvc*) UArray2b_at(array2b, col, row) = cvc;
 }
 
+/* cvc_rgb_transform
+ * Gets:  the map parameters for a UArray2b map.
+ *        elem provides a Pnm_cvc struct
+ *        cl is a pointer to an unsigned value representing the denominator
+ * Returns: nothing
+ * Does: updates each pixel to contain a Pnm_rgb struct containing the pixel
+ *       data in rgb format instead of cvc
+ */
 void cvc_rgb_transform(int col, int row, UArray2b_T array2b, void *elem,
     void *cl)
 {
@@ -388,7 +445,13 @@ void cvc_rgb_transform(int col, int row, UArray2b_T array2b, void *elem,
 
 //==========================================================================
 
-
+/* round_arith
+ * Gets:  a float, number, to be rounded
+ *        two floats, lower, and upper, which represent the limits for the
+ *        rounding
+ * Returns: a static float representing the rounded number
+ * Does: Rounds a given number to within the given bounds
+ */
 static float round_arith(float number, float lower, float upper)
 
 {
@@ -400,6 +463,16 @@ static float round_arith(float number, float lower, float upper)
     return number;
 }
 
+/* shave_column
+ * Gets:  the parameters for a UArray2b map.
+ *        cl is a pointer to a UArray2b where values are
+ *        copied to.
+ *        elem represents the pixel stored at a point in
+ *        the photo
+ * Returns: nothing
+ * Does: copies all values from an array to another array
+ *       except for the furthest right column
+ */
 void shave_column(int col, int row, UArray2b_T array2b, void *elem,
                   void *cl)
 {
@@ -412,7 +485,16 @@ void shave_column(int col, int row, UArray2b_T array2b, void *elem,
     }
 }
 
-
+/* shave_row
+ * Gets:  the parameters for a UArray2b map.
+ *        cl is a pointer to a UArray2b where values are
+ *        copied to.
+ *        elem represents the pixel stored at a point in
+ *        the photo
+ * Returns: nothing
+ * Does: copies all values from an array to another array
+ *       except for the furthest down row
+ */
 void shave_row(int col, int row, UArray2b_T array2b, void *elem,
                void *cl)
 {
@@ -424,6 +506,7 @@ void shave_row(int col, int row, UArray2b_T array2b, void *elem,
         //printf("shaved row @ %d\n", row);
     }
 }
+
 
 int ppmdiff(UArray2b_T og, UArray2b_T array2b)
 {
