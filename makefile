@@ -64,7 +64,7 @@ all: ppmtrans a2test timing_test
 40image: 40image.o compress40.o a2blocked.o uarray2b.o uarray2.o  
 	$(CC) $(LDFLAGS) $^ -o $@ $(LDLIBS)
 
-test: 40image.o bitpack.o process_image.o compressArith.o a2blocked.o uarray2b.o uarray2.o 
+test: 40image.o bitpack.o process_image.o compress40.o a2blocked.o uarray2b.o uarray2.o 
 	$(CC) $(LDFLAGS) $^ -o $@ $(LDLIBS)
 
 clean:
